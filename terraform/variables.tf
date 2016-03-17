@@ -30,3 +30,7 @@ variable "instance_type" {
   type = "string"
   default = "m3.medium"
 }
+
+variable "bid_price" {
+  type = "string"
+}
