@@ -115,3 +115,32 @@ resource "aws_security_group" "elb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
+
+/* On-Demand Instances */
+
+resource "aws_launch_configuration" "on_demand" {
+  image_id = "${var.image_id}"
+  instance_type = "${var.instance_type}"
+  iam_instance_profile = "${aws_iam_instance_profile.ecs.name}"
+  security_groups = ["${aws_security_group.ec2.id}"]
+  associate_public_ip_address = true
+  user_data = <<EOF
+#!/bin/bash
+echo "ECS_CLUSTER=${aws_ecs_cluster.ecs.name}" > /etc/ecs/ecs.config
+EOF
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_autoscaling_group" "on_demand" {
+  min_size = "${var.min_instances}"
+  max_size = "${var.max_instances}"
+  launch_configuration = "${aws_launch_configuration.on_demand.name}"
+  vpc_zone_identifier = ["${aws_subnet.subnet.id}"]
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
