@@ -139,6 +139,8 @@ resource "aws_autoscaling_group" "on_demand" {
   max_size = "${var.max_instances}"
   launch_configuration = "${aws_launch_configuration.on_demand.name}"
   vpc_zone_identifier = ["${aws_subnet.subnet.id}"]
+  termination_policies = ["ClosestToNextInstanceHour"]
+  enabled_metrics = ["GroupPendingInstances", "GroupTerminatingInstances"]
 
   lifecycle {
     create_before_destroy = true
@@ -165,12 +167,75 @@ EOF
 }
 
 resource "aws_autoscaling_group" "spot" {
-  min_size = "${var.min_instances}"
-  max_size = "${var.max_instances}"
+  min_size = "${var.min_instances - var.min_instances}"
+  max_size = "${var.max_instances - var.min_instances}"
   launch_configuration = "${aws_launch_configuration.spot.name}"
   vpc_zone_identifier = ["${aws_subnet.subnet.id}"]
+  enabled_metrics = ["GroupPendingInstances", "GroupTerminatingInstances"]
 
   lifecycle {
     create_before_destroy = true
   }
 }
+
+/* Scaling Policies */
+
+resource "aws_autoscaling_policy" "scale_up" {
+  name = "ecs-spot-instances-scale_up"
+  autoscaling_group_name = "${aws_autoscaling_group.on_demand.name}"
+  adjustment_type = "ChangeInCapacity"
+  scaling_adjustment = 1
+  cooldown = 300
+}
+
+resource "aws_autoscaling_policy" "scale_down" {
+  name = "ecs-spot-instances-scale_down"
+  autoscaling_group_name = "${aws_autoscaling_group.on_demand.name}"
+  adjustment_type = "ChangeInCapacity"
+  scaling_adjustment = -1
+  cooldown = 300
+}
+
+resource "aws_cloudwatch_metric_alarm" "spot_pending" {
+  alarm_name = "ecs-spot-instances-spot_pending"
+  namespace = "AWS/ECS"
+  metric_name = "MemoryReservation"
+  statistic = "Sum"
+  period = "300"
+  evaluation_periods = "1"
+  threshold = "80"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+
+  dimensions {
+    ClusterName = "${aws_ecs_cluster.ecs.name}"
+  }
+
+  alarm_actions = [
+    "${aws_autoscaling_policy.scale_down.arn}"
+  ]
+}
+
+/* Based on reservation, send scale up. */
+/* When spot instances scale up, scale down on-demand instances. */
+/* When spot instances scale down, scale up on-demand instances. */
+
+/*
+
+resource "aws_cloudwatch_metric_alarm" "spot_terminating" {
+  alarm_name = "ecs-spot-instances-spot_terminating"
+  namespace = "AWS/ECS"
+  metric_name = "MemoryReservation"
+  statistic = "Average"
+  period = "300"
+  evaluation_periods = "1"
+  threshold = "60"
+  comparison_operator = "LessThanOrEqualToThreshold"
+
+  dimensions {
+    ClusterName = "${aws_ecs_cluster.ecs.name}"
+  }
+
+  alarm_actions = [
+    "${aws_autoscaling_policy.scale_down.arn}"
+  ]
+}*/

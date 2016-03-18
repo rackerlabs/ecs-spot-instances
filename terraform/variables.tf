@@ -18,7 +18,7 @@ variable "min_instances" {
 
 variable "max_instances" {
   type = "string"
-  default = "4"
+  default = "8"
 }
 
 variable "image_id" {
